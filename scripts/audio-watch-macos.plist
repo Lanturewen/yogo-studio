@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>local.yogo75.audio-watch</string>
+<key>CFBundleName</key><string>YOGO 音量波形</string>
+<key>NSMicrophoneUsageDescription</key><string>仅在微信输入法收音期间计算音量，让键盘背光随声音变化。音频只在内存中处理，不保存或上传。</string>
+</dict></plist>

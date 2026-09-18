@@ -1,0 +1,101 @@
+name: desktop-build
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm ci
+      - run: node node_modules/electron/install.js
+      - run: npm test
+      - name: Bundle official Node runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=24.14.0
+          arch=$(node -p process.arch)
+          archive="node-v${version}-darwin-${arch}.tar.gz"
+          curl -fL "https://nodejs.org/dist/v${version}/${archive}" -o "$RUNNER_TEMP/$archive"
+          curl -fL "https://nodejs.org/dist/v${version}/SHASUMS256.txt" -o "$RUNNER_TEMP/node-shasums.txt"
+          cd "$RUNNER_TEMP"
+          grep "  $archive$" node-shasums.txt > chosen-shasum.txt
+          shasum -a 256 -c chosen-shasum.txt
+          tar -xzf "$archive"
+          mkdir -p "$GITHUB_WORKSPACE/runtime"
+          cp "node-v${version}-darwin-${arch}/bin/node" "$GITHUB_WORKSPACE/runtime/node"
+          cp "node-v${version}-darwin-${arch}/LICENSE" "$GITHUB_WORKSPACE/runtime/LICENSE"
+      - name: Build macOS package
+        run: npm run build:macos
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Check the packaged runtime from the delivered ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive=$(find dist/desktop -maxdepth 1 -name '*.zip' -print -quit)
+          test -n "$archive"
+          ditto -x -k "$archive" "$RUNNER_TEMP/yogo-unpacked"
+          node scripts/desktop-smoke.cjs "$RUNNER_TEMP/yogo-unpacked/YOGO Studio.app/Contents/Resources"
+      - name: Record package identity and checksums
+        run: node scripts/desktop-artifact-info.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YOGO-Studio-macOS-Apple-Silicon
+          path: |
+            dist/desktop/*.dmg
+            dist/desktop/*.zip
+            dist/desktop/*.json
+            dist/desktop/*.txt
+            dist/desktop/*.md
+            dist/desktop/LICENSE
+          if-no-files-found: error
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm ci
+      - run: node node_modules/electron/install.js
+      - run: npm test
+      - name: Bundle official Node runtime
+        shell: pwsh
+        run: |
+          $version = '24.14.0'
+          $archive = "node-v$version-win-x64.zip"
+          $zip = Join-Path $env:RUNNER_TEMP $archive
+          Invoke-WebRequest "https://nodejs.org/dist/v$version/$archive" -OutFile $zip
+          $sums = (Invoke-WebRequest "https://nodejs.org/dist/v$version/SHASUMS256.txt").Content
+          $expected = (($sums -split "`n" | Where-Object { $_.Trim().EndsWith("  $archive") }) -split '\s+')[0]
+          if (!$expected -or (Get-FileHash $zip -Algorithm SHA256).Hash -ne $expected) { throw 'Node runtime checksum mismatch' }
+          Expand-Archive -LiteralPath $zip -DestinationPath $env:RUNNER_TEMP
+          New-Item -ItemType Directory -Force runtime | Out-Null
+          Copy-Item "$env:RUNNER_TEMP/node-v$version-win-x64/node.exe" runtime/node.exe
+          Copy-Item "$env:RUNNER_TEMP/node-v$version-win-x64/LICENSE" runtime/LICENSE
+      - name: Build Windows package
+        run: npm run build:windows
+      - name: Check packaged runtime
+        run: node scripts/desktop-smoke.cjs dist/desktop/win-unpacked/resources
+      - name: Record package identity and checksums
+        run: node scripts/desktop-artifact-info.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YOGO-Studio-Windows-x64
+          path: |
+            dist/desktop/*.exe
+            dist/desktop/*.json
+            dist/desktop/*.txt
+            dist/desktop/*.md
+            dist/desktop/LICENSE
+          if-no-files-found: error

@@ -1,0 +1,14 @@
+{
+  "scope": "global",
+  "resultDisplayMs": 15000,
+  "port": 3395,
+  "backlightSync": true,
+  "stateAnimations": {
+    "busy": "busy",
+    "done": "done",
+    "error": "error",
+    "waiting": "waiting"
+  },
+  "voiceEnabled": true,
+  "codexDialEnabled": true
+}

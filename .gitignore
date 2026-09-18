@@ -1,0 +1,16 @@
+node_modules
+runtime/
+.local/
+dist/
+config.json
+*.log
+output/
+.playwright-cli/
+.DS_Store
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.dmp

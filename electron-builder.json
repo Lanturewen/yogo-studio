@@ -1,0 +1,88 @@
+{
+  "appId": "studio.yogo.desktop",
+  "productName": "YOGO Studio",
+  "asar": false,
+  "npmRebuild": false,
+  "directories": {
+    "output": "dist/desktop",
+    "buildResources": "desktop"
+  },
+  "files": [
+    "*.cjs",
+    "package.json",
+    "player.html",
+    "ui/**",
+    "desktop/**",
+    "animations/**",
+    "scripts/*.cjs",
+    "scripts/*.cs",
+    "scripts/*.m",
+    "scripts/*.plist",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "!config.json",
+    "!.local/**",
+    "!desktop/*.log",
+    "AI_SETUP.md",
+    "VOICE.md",
+    "START_HERE.md",
+    "MACOS.md",
+    "README.md",
+    "HOOKS.md",
+    "VALIDATION.md",
+    "ANIMATIONS.md",
+    "DESKTOP.md"
+  ],
+  "extraResources": [
+    {
+      "from": "runtime",
+      "to": "runtime",
+      "filter": [
+        "node",
+        "node.exe",
+        "LICENSE",
+        "audio-watch-macos",
+        "audio-watch-windows.exe",
+        "codex-dial-macos",
+        "codex-dial-windows.exe",
+        "licenses/**"
+      ]
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "desktop/icon.ico",
+    "signExecutable": false
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "deleteAppDataOnUninstall": false,
+    "artifactName": "YOGO-Studio-${version}-Windows-${arch}-Setup.${ext}"
+  },
+  "mac": {
+    "target": [
+      "dmg",
+      "zip"
+    ],
+    "category": "public.app-category.utilities",
+    "icon": "desktop/icon.png",
+    "identity": "-",
+    "extendInfo": {
+      "NSMicrophoneUsageDescription": "在微信输入法收音时计算实时音量，让键盘波形随声音变化；不保存或上传录音。"
+    },
+    "artifactName": "YOGO-Studio-${version}-macOS-${arch}.${ext}",
+    "hardenedRuntime": false
+  },
+  "publish": null
+}
