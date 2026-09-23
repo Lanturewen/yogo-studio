@@ -12,8 +12,6 @@ const initial=settings.read();
 const {VoiceState}=require('./voice-state.cjs');
 const {AudioObserver}=require('./voice-monitor.cjs');
 const {CodexDial}=require('./codex-dial.cjs');
-const {KeyboardPreset}=require('./keyboard-preset.cjs');
-const keyboardPreset=new KeyboardPreset(settings.local);
 const voice=new VoiceState(initial.voiceProviders);
 let audioObserver=null,voicePoll=null,lastVoiceActive=false,codexDial=null;
 let animationId=null;
@@ -102,12 +100,7 @@ function start(next){
     try{stop();}catch(e){lastError=e.message;}
   },resultDisplayMs);
 }
-function withKeyboard(action){
-  if(keyboard)return action(keyboard);
-  const wired=devices().some(d=>d.productId===0x119b),borrowed=new Yogo({wireless:!wired});
-  try{return action(borrowed);}finally{borrowed.stop();}
-}
-function status(){return {appId:'yogo75-codex-status',version:require('./package.json').version,instance:__dirname,animationId,voice:{enabled:initial.voiceEnabled,...voice.snapshot(),demo:state==='voice'&&mode==='manual'},codexDial:codexDial?.snapshot()??{enabled:false},keyboardPreset:keyboardPreset.snapshot(),backlightSync:initial.backlightSync,backlightError,animationErrors:animations.errors,state,frames,backlightFrames,error:lastError,mode,follow,hookLastEvent:attention.lastEvent,releasedFor,resultDisplayMs,connection:keyboard?(keyboard.size===32?'2.4G 接收器':'USB 有线'):null,stats:keyboard?.stats??null};}
+function status(){return {appId:'yogo75-codex-status',version:require('./package.json').version,instance:__dirname,animationId,voice:{enabled:initial.voiceEnabled,...voice.snapshot(),demo:state==='voice'&&mode==='manual'},codexDial:codexDial?.snapshot()??{enabled:false},backlightSync:initial.backlightSync,backlightError,animationErrors:animations.errors,state,frames,backlightFrames,error:lastError,mode,follow,hookLastEvent:attention.lastEvent,releasedFor,resultDisplayMs,connection:keyboard?(keyboard.size===32?'2.4G 接收器':'USB 有线'):null,stats:keyboard?.stats??null};}
 function updateSettings(patch){
  const valid=settings.validatePatch(patch);
  if(valid.stateAnimations)valid.stateAnimations={...initial.stateAnimations,...valid.stateAnimations};
@@ -128,22 +121,18 @@ const server=http.createServer((req,res)=>{
   if(req.method==='GET'&&req.url==='/app-info'){
     let connected=[],deviceError='';try{connected=devices().map(d=>({transport:d.productId===0x119b?'USB 有线':'2.4G 接收器',name:d.product||'YOGO 75 PRO'}));}catch(e){deviceError=e.message;}
     const config=settings.read();
-    return reply(res,200,{platform:process.platform,devices:connected,deviceError,settings:{scope:config.scope,sessionId:config.sessionId,backlightSync:initial.backlightSync,voiceEnabled:initial.voiceEnabled,codexDialEnabled:initial.codexDialEnabled,resultDisplayMs,theme:initial.theme,reduceMotion:initial.reduceMotion,onboardingComplete:initial.onboardingComplete,stateAnimations:initial.stateAnimations},backups:keyboardPreset.backups(),sessionsAvailable:fs.existsSync(initial.sessionsRoot)});
+    return reply(res,200,{platform:process.platform,devices:connected,deviceError,settings:{scope:config.scope,sessionId:config.sessionId,backlightSync:initial.backlightSync,voiceEnabled:initial.voiceEnabled,codexDialEnabled:initial.codexDialEnabled,resultDisplayMs,theme:initial.theme,reduceMotion:initial.reduceMotion,onboardingComplete:initial.onboardingComplete,stateAnimations:initial.stateAnimations},sessionsAvailable:fs.existsSync(initial.sessionsRoot)});
   }
   if(req.method==='GET'&&req.url==='/sessions'){try{const index=watcher?.watchers?watcher:new GlobalWatcher(settings.read(),()=>{});index.discover();const list=[];for(const [file,w] of index.watchers){const id=w.config.sessionId;selectableSessions.set(id,file);list.push({id,modified:fs.statSync(file).mtimeMs});}return reply(res,200,list.sort((a,b)=>b.modified-a.modified).slice(0,60));}catch(e){return reply(res,400,{error:e.message});}}
   if(req.method==='GET'&&req.url.startsWith('/catalog-preview?')){try{const query=new URL(req.url,base).searchParams,id=query.get('id'),ms=Number(query.get('ms'));if(!Number.isFinite(ms)||ms<0||ms>86400000)throw Error('Invalid preview time');const dot=frame(id,ms,{demo:true});return reply(res,200,{pixels:dot,keys:backlight.frame(id,ms,dot,{demo:true}),id});}catch(e){return reply(res,400,{error:e.message});}}
   if(req.method==='GET'&&req.url==='/animations')return reply(res,200,animations.list());
   if(req.method==='GET'&&req.url==='/preview')return reply(res,200,state==='stopped'?Array.from({length:36},()=>[0,0,0]):displayFrame(Date.now()-started));
   if(req.method==='GET'&&req.url==='/status')return reply(res,200,status());
-  if(req.method==='POST'&&['/state','/auto','/scope','/stop','/shutdown','/attention','/voice','/keyboard-preset','/settings','/import-animation'].includes(req.url)){
+  if(req.method==='POST'&&['/state','/auto','/scope','/stop','/shutdown','/attention','/voice','/settings','/import-animation'].includes(req.url)){
     if(req.headers['x-player-token']!==token||(req.headers.origin&&req.headers.origin!==base))return reply(res,403,{error:'Request rejected'});
     let body='';req.on('data',c=>{body+=c;if(body.length>(req.url==='/import-animation'?2*1024*1024:8192))req.destroy();});
     req.on('end',()=>{try{
-      if(req.url==='/keyboard-preset'){
-        const {action,backupId}=JSON.parse(body);if(!['check','install','restore'].includes(action))throw new Error('Invalid preset action');
-        withKeyboard(keyboard=>keyboardPreset[action](keyboard,backupId));
-      }
-      else if(req.url==='/settings')updateSettings(JSON.parse(body));
+      if(req.url==='/settings')updateSettings(JSON.parse(body));
       else if(req.url==='/import-animation'){
         const data=animations.validate(JSON.parse(body));if(animations.list().some(a=>a.id===data.id))throw new Error('已有相同 ID 的动画，请更改文件中的 ID 后重试');
         const dir=path.join(settings.local,'animations');fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,data.id+'.json'),JSON.stringify(data),{flag:'wx'});animations.register(data);
@@ -156,7 +145,7 @@ const server=http.createServer((req,res)=>{
       else {mode='manual';stop();}
       reply(res,200,status());
       if(req.url==='/shutdown')setTimeout(shutdown,100);
-    }catch(e){if(req.url==='/keyboard-preset')keyboardPreset.fail(e);else lastError=e.message;reply(res,500,{...status(),error:e.message});}});return;
+    }catch(e){lastError=e.message;reply(res,500,{...status(),error:e.message});}});return;
   }
   reply(res,404,{error:'Not found'});
 });

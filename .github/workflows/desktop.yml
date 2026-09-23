@@ -3,17 +3,28 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    tags: ['v*']
 permissions:
   contents: read
 jobs:
   macos:
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24.14.0
           cache: npm
+      - name: Confirm runner architecture
+        run: test "$(node -p process.arch)" = "${{ matrix.arch }}"
       - run: npm ci
       - run: node node_modules/electron/install.js
       - run: npm test
@@ -49,7 +60,7 @@ jobs:
         run: node scripts/desktop-artifact-info.cjs
       - uses: actions/upload-artifact@v4
         with:
-          name: YOGO-Studio-macOS-Apple-Silicon
+          name: YOGO-Studio-macOS-${{ matrix.arch }}
           path: |
             dist/desktop/*.dmg
             dist/desktop/*.zip
@@ -99,3 +110,37 @@ jobs:
             dist/desktop/*.md
             dist/desktop/LICENSE
           if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Check tag matches package version
+        run: test "$GITHUB_REF_NAME" = "v$(node -p 'require("./package.json").version')"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: YOGO-Studio-*
+          path: release
+          merge-multiple: true
+      - name: Check release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls release/*-macOS-arm64.dmg release/*-macOS-arm64.zip
+          ls release/*-macOS-x64.dmg release/*-macOS-x64.zip
+          ls release/*-Windows-x64-Setup.exe
+          ls release/SHA256SUMS-darwin-arm64.txt release/SHA256SUMS-darwin-x64.txt release/SHA256SUMS-win32-x64.txt
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            release/*.dmg release/*.zip release/*.exe \
+            release/SHA256SUMS-*.txt release/BUILD_INFO-*.json \
+            --verify-tag --prerelease --generate-notes

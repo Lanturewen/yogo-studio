@@ -8,7 +8,8 @@
 
 | 系统 | 安装包 |
 | --- | --- |
-| Mac（Apple Silicon） | `macOS-arm64.dmg`，打开后拖入“应用程序”；也可用 ZIP |
+| Mac（Apple Silicon） | `YOGO-Studio-<版本>-macOS-arm64.dmg`，打开后拖入“应用程序”；也可用 ZIP |
+| Mac（Intel） | `YOGO-Studio-<版本>-macOS-x64.dmg`，打开后拖入“应用程序”；也可用 ZIP |
 | Windows（x64） | `Windows-x64-Setup.exe` |
 
 1. 安装并打开 **YOGO Studio**，连接键盘 USB 或 2.4G 接收器。无需另外安装 Node.js。
@@ -19,11 +20,11 @@
 
 Mac 的说明在 `/Applications/YOGO Studio.app/Contents/Resources/app/AI_SETUP.md`；Windows 在安装目录的 `resources/app/AI_SETUP.md`。也可把 [AI_SETUP.md](AI_SETUP.md) 发给 AI。普通网页聊天无法直接操作你的电脑。
 
-首次语音快捷键需在微信输入法中手动设置：Mac **右 Option**，Windows **Ctrl+F5**。波轮的 Codex 快捷键及 Mac 系统权限见 [快速开始](START_HERE.md)。跨系统使用同一键盘后重新检查板载预设。
+首次语音快捷键需在微信输入法中手动设置：Mac **右 Option**，Windows **Ctrl+F5**；波轮和底部自定义键由官方键盘插件设置。YOGO Studio 不写入键盘映射。波轮的 Codex 快捷键及 Mac 系统权限见 [快速开始](START_HERE.md)。
 
 ## 当前版本
 
-`0.9.0-beta.14`，提供 Mac Apple Silicon 与 Windows x64 安装包。Mac 使用 ad-hoc 签名，尚无 Apple Developer ID 签名与公证；Windows 安装包没有发布者代码签名，首次打开可能出现系统安全提示。请核对下载来源与 SHA-256，只通过系统正常界面放行可信文件。
+`0.9.0-beta.17`，源码可构建 Mac Apple Silicon、Intel Mac 与 Windows x64 安装包。Mac 使用 ad-hoc 签名，尚无 Apple Developer ID 签名与公证；Windows 安装包没有发布者代码签名，首次打开可能出现系统安全提示。请核对下载来源与 SHA-256，只通过系统正常界面放行可信文件。
 
 [已验证范围与限制](VALIDATION.md) · [开发与构建](DESKTOP.md) · [动画格式](ANIMATIONS.md) · [语音接入](VOICE.md)
 
