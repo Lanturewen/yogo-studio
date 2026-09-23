@@ -43,16 +43,16 @@ test('failed verification rolls the original matrix back',()=>{
  finally{fs.rmSync(local,{recursive:true,force:true});}
 });
 
-test('switching platform changes only the voice modifier and backs up each previous mapping',(t)=>{
+test('switching platform changes only the voice key mapping and backs up each previous mapping',(t)=>{
  t.mock.method(Date.prototype,'toISOString',()=> '2026-09-18T00:00:00.000Z');
  const local=temp(),before=Buffer.from(Array.from({length:384},(_,i)=>i%256)),keyboard=new Keyboard(before);
  const mac=new KeyboardPreset(local,'darwin'),win=new KeyboardPreset(local,'win32');
  try{
   mac.install(keyboard);const macMatrix=Buffer.from(keyboard.matrix);
-  assert.deepEqual([...macMatrix.subarray(138,141)],[0x10,0,0x3e]);
+  assert.deepEqual([...macMatrix.subarray(138,141)],[0x10,0x40,0x00]);
   assert.equal(win.check(keyboard).changed.length,1);
   const installed=win.install(keyboard);
-  const expected=Buffer.from(macMatrix);expected[139]=1;
+  const expected=Buffer.from(macMatrix);expected[139]=1;expected[140]=0x3e;
   assert.deepEqual(keyboard.matrix,expected);
   assert.equal(win.backups().length,2,'same-millisecond backups must both survive');
   assert.equal(win.backups()[0],path.basename(installed.backup),'default restore selects newest backup');

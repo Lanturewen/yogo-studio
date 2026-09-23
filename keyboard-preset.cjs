@@ -2,7 +2,7 @@
 const fs=require('fs'),path=require('path'),crypto=require('crypto');
 
 function presetForPlatform(platform=process.platform){return [
-  {index:46,label:'下方自定义键 1：微信语音输入 '+(platform==='win32'?'Ctrl+F5':'F5'),value:[0x10,platform==='win32'?0x01:0x00,0x3e]},
+  {index:46,label:'下方自定义键 1：微信语音输入 '+(platform==='win32'?'Ctrl+F5':'右 Option'),value:platform==='win32'?[0x10,0x01,0x3e]:[0x10,0x40,0x00]},
   {index:47,label:'下方自定义键 2：Backspace',value:[0x10,0x00,0x2a]},
   {index:112,label:'波轮左转：-',value:[0x10,0x00,0x2d]},
   {index:113,label:'波轮右转：=',value:[0x10,0x00,0x2e]},

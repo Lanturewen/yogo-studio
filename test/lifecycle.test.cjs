@@ -23,6 +23,28 @@ test('global: simultaneous tasks, failure priority, new batches and resumed arch
     write('new',[init('new'),event('task_started',{turn_id:'new'})]);w.scanAt=0;w.poll();assert.equal(w.snapshot().active,1);
   }finally{for(const file of fs.readdirSync(dir))fs.unlinkSync(path.join(dir,file));fs.rmdirSync(dir);}
 });
+test('global: an idle busy session is reconciled, then expires until new activity arrives',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'yogo-stale-test-')),file=path.join(dir,'session.jsonl');
+  const meta={type:'session_meta',payload:{id:'session'}};
+  const started={type:'event_msg',payload:{type:'task_started',turn_id:'first'}};
+  const complete={type:'event_msg',payload:{type:'task_complete',turn_id:'first'}};
+  const write=row=>fs.appendFileSync(file,JSON.stringify(row)+'\n');
+  try{
+    write(meta);write(started);
+    const w=new GlobalWatcher({sessionsRoot:dir},()=>{});w.poll();assert.equal(w.snapshot().active,1);
+    write(complete);
+    const child=w.watchers.get(file);
+    child.offset=fs.statSync(file).size; // Simulate an incremental watcher that missed completion.
+    fs.utimesSync(file,new Date(Date.now()-2*60*1000),new Date(Date.now()-2*60*1000));
+    w.poll();assert.equal(w.snapshot().active,0);assert.equal(w.snapshot().state,'done');
+    write({type:'event_msg',payload:{type:'task_started',turn_id:'second'}});
+    w.poll();assert.equal(w.snapshot().active,1);
+    fs.utimesSync(file,new Date(Date.now()-16*60*1000),new Date(Date.now()-16*60*1000));
+    w.poll();assert.equal(w.snapshot().active,0);assert.equal(w.snapshot().state,'stopped');
+    write({type:'response_item',payload:{type:'message'}});
+    w.poll();assert.equal(w.snapshot().active,1);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
 const meta={type:'session_meta',payload:{id:'selected'}};
 const event=(type,extra={})=>({type:'event_msg',payload:{type,...extra}});
 function model(){const m=new Lifecycle('selected');m.accept(meta);m.accept(event('task_started',{turn_id:'a'}));return m;}

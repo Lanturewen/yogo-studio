@@ -19,7 +19,7 @@
 
 Mac 的说明在 `/Applications/YOGO Studio.app/Contents/Resources/app/AI_SETUP.md`；Windows 在安装目录的 `resources/app/AI_SETUP.md`。也可把 [AI_SETUP.md](AI_SETUP.md) 发给 AI。普通网页聊天无法直接操作你的电脑。
 
-首次语音快捷键需在微信输入法中手动设置：Mac **F5**，Windows **Ctrl+F5**。波轮的 Codex 快捷键及 Mac 系统权限见 [快速开始](START_HERE.md)。跨系统使用同一键盘后重新检查板载预设。
+首次语音快捷键需在微信输入法中手动设置：Mac **右 Option**，Windows **Ctrl+F5**。波轮的 Codex 快捷键及 Mac 系统权限见 [快速开始](START_HERE.md)。跨系统使用同一键盘后重新检查板载预设。
 
 ## 当前版本
 

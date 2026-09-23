@@ -3,6 +3,8 @@ const fs=require('fs');
 const path=require('path');
 const {StringDecoder}=require('string_decoder');
 const {isQuestion}=require('./attention.cjs');
+const RECONCILE_IDLE_MS=60*1000;
+const STALE_ACTIVE_MS=15*60*1000;
 
 // Only structured lifecycle events count. Tool output and assistant prose never do.
 function fatal(error){
@@ -45,7 +47,7 @@ class Lifecycle {
 class Watcher {
   constructor(config,onChange){
     this.config=config;this.onChange=onChange;this.lifecycle=new Lifecycle(config.sessionId);
-    this.offset=0;this.decoder=new StringDecoder('utf8');this.pending='';this.error='';this.timer=null;this.ready=false;
+    this.offset=0;this.decoder=new StringDecoder('utf8');this.pending='';this.error='';this.timer=null;this.ready=false;this.lastReconciledAt=0;
   }
   read(){
     const stat=fs.statSync(this.config.transcript);
@@ -78,6 +80,14 @@ class Watcher {
     }
   }
   snapshot(){return {...this.lifecycle.snapshot(),error:this.error,scope:'当前任务',offset:this.offset};}
+  reconcile(){
+    const fresh=new Watcher(this.config,()=>{});
+    fresh.read();
+    const before=this.lifecycle.key();
+    this.lifecycle=fresh.lifecycle;this.offset=fresh.offset;this.pending=fresh.pending;this.decoder=fresh.decoder;
+    this.lastReconciledAt=Date.now();
+    if(before!==this.lifecycle.key())this.onChange(this.snapshot());
+  }
   start(){this.poll();this.timer=setInterval(()=>this.poll(),500);}
   close(){clearInterval(this.timer);}
 }
@@ -117,6 +127,14 @@ class GlobalWatcher {
       for(const [file,w] of this.watchers){
         w.poll();
         if(w.error){this.states.delete(file);if(!fs.existsSync(file))this.watchers.delete(file);else this.error='部分会话读取异常';}
+        else if(['busy','waiting'].includes(w.lifecycle.state)){
+          const age=Date.now()-fs.statSync(file).mtimeMs;
+          if(age>=RECONCILE_IDLE_MS&&Date.now()-w.lastReconciledAt>=RECONCILE_IDLE_MS){try{w.reconcile();}catch{this.error='部分会话读取异常';}}
+          if(['busy','waiting'].includes(w.lifecycle.state)){
+            if(age>=STALE_ACTIVE_MS)this.states.delete(file);
+            else if(!this.states.has(file))this.states.set(file,w.snapshot());
+          }
+        }
       }
     }catch(e){this.error=e.message;}
     const s=this.snapshot(),key=JSON.stringify(s);
