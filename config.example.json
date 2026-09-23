@@ -10,5 +10,6 @@
     "waiting": "waiting"
   },
   "voiceEnabled": true,
-  "codexDialEnabled": true
+  "codexDialEnabled": true,
+  "showInDock": true
 }

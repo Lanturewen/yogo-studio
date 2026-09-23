@@ -8,6 +8,7 @@ const runtime=app.isPackaged?path.join(process.resourcesPath,'runtime'):path.joi
 const node=path.join(runtime,process.platform==='win32'?'node.exe':'node');
 let win,tray,child,url,token,quitting=false,closed=false,log;
 const dataRoot=process.env.YOGO_DESKTOP_DATA_DIR||app.getPath('userData');
+let dockUpdate=Promise.resolve(),lastDockCallAt=0;
 if(!app.requestSingleInstanceLock()){app.quit();}else{
  app.on('second-instance',()=>show());
  app.on('activate',()=>show());
@@ -38,8 +39,24 @@ function migrate(){
   for(const folder of ['keymap-backups','animations']){const from=path.join(root,'.local',folder),to=path.join(dataRoot,'.local',folder);if(fs.existsSync(from)&&!fs.existsSync(to))fs.cpSync(from,to,{recursive:true});}
  }
 }
+function readDockPreference(){
+ try{return JSON.parse(fs.readFileSync(path.join(dataRoot,'config.json'),'utf8')).showInDock!==false;}catch{return true;}
+}
+function applyDockVisibility(visible){
+ if(process.platform!=='darwin')return Promise.resolve();
+ dockUpdate=dockUpdate.catch(()=>{}).then(async()=>{
+  if(app.dock.isVisible()===visible)return;
+  // Electron may ignore hide() within one second of a previous Dock call.
+  const delay=Math.max(0,1100-(Date.now()-lastDockCallAt));
+  if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
+  if(visible)await app.dock.show();else app.dock.hide();
+  lastDockCallAt=Date.now();
+ });
+ return dockUpdate;
+}
 async function start(){
- migrate();log=fs.createWriteStream(path.join(dataRoot,'desktop.log'),{flags:'a'});
+ migrate();if(!readDockPreference())await applyDockVisibility(false);
+ log=fs.createWriteStream(path.join(dataRoot,'desktop.log'),{flags:'a'});
  if(!fs.existsSync(node))throw Error('缺少内置运行环境。请重新下载完整安装包。开发者可先准备 runtime/'+path.basename(node));
  for(const base of [root,dataRoot]){try{await stopAt(JSON.parse(fs.readFileSync(path.join(base,'.local','runtime.json'),'utf8')));}catch{}}
  const icon=path.join(__dirname,'icon.png');
@@ -66,6 +83,14 @@ function registerIPC(){
  handle('yogo:data',async()=>{const error=await shell.openPath(dataRoot);if(error)throw Error(error);});
  handle('yogo:permissions',()=>{if(process.platform==='darwin')return shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');});
  handle('yogo:login',value=>{if(typeof value!=='boolean'||!app.isPackaged)throw Error('仅安装版支持登录启动');app.setLoginItemSettings({openAtLogin:value,args:['--hidden']});});
+ handle('yogo:dock',async value=>{
+  if(process.platform!=='darwin'||typeof value!=='boolean')throw Error('仅 macOS 桌面版支持 Dock 显示设置');
+  const previous=readDockPreference();
+  await applyDockVisibility(value);
+  try{await api('/settings',{showInDock:value});}
+  catch(error){await applyDockVisibility(previous);throw error;}
+  return {showInDock:value};
+ });
  handle('yogo:quit',()=>{void quit();});
  handle('yogo:hooks',()=>{
   const os=require('os'),{definition,merge}=require('../scripts/install-hooks.cjs');
