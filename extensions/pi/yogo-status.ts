@@ -163,6 +163,23 @@ export default function (pi: ExtensionAPI) {
           return;
         }
 
+        const bMatch = sub.match(/^(?:brightness\s+)?(\d{1,3})$/i);
+        if (bMatch) {
+          const val = Number(bMatch[1]);
+          if (val >= 5 && val <= 100) {
+            const token = await getToken(runtime.url);
+            if (token) {
+              await fetch(`${runtime.url}/settings`, {
+                method: "POST",
+                headers: { "X-Player-Token": token, "Content-Type": "application/json" },
+                body: JSON.stringify({ brightness: val }),
+              });
+              ctx.ui.notify(`💡 YOGO 键盘亮度已设置为 ${val}%`, "info");
+              return;
+            }
+          }
+        }
+
         try {
           const res = await fetch(`${runtime.url}/status`, { signal: AbortSignal.timeout(1500) });
           const data = await res.json();

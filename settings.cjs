@@ -5,7 +5,7 @@ const {providers,platformDefaults}=require('./voice-state.cjs');
 function read(){
  const file=path.join(root,'config.json');
  const c=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):{};
- const config={scope:'global',port:3395,backlightSync:true,voiceEnabled:true,codexDialEnabled:true,showInDock:true,resultDisplayMs:15000,theme:'light',reduceMotion:false,onboardingComplete:false,stateAnimations:{busy:'busy',done:'done',error:'error'},...c};
+ const config={scope:'global',port:3395,backlightSync:true,voiceEnabled:true,codexDialEnabled:true,showInDock:true,resultDisplayMs:15000,brightness:100,theme:'light',reduceMotion:false,onboardingComplete:false,stateAnimations:{busy:'busy',done:'done',error:'error'},...c};
  config.stateAnimations={busy:'busy',done:'done',error:'error',waiting:'waiting',...c.stateAnimations};
  config.sessionsRoot=c.sessionsRoot||path.join(process.env.CODEX_HOME||path.join(os.homedir(),'.codex'),'sessions');
  if(!['global','current'].includes(config.scope))throw new Error('Invalid scope');
@@ -16,6 +16,8 @@ function read(){
  config.voiceProviders=providers(c.voiceProviders??platformDefaults());
  if(!Number.isInteger(config.port)||config.port<0||config.port>65535)throw new Error('Invalid port');
  if(!Number.isInteger(config.resultDisplayMs)||config.resultDisplayMs<1000||config.resultDisplayMs>300000)throw new Error('resultDisplayMs must be 1000..300000');
+ if(config.brightness===undefined)config.brightness=100;
+ if(!Number.isInteger(config.brightness)||config.brightness<5||config.brightness>100)throw new Error('brightness must be 5..100');
  return config;
 }
 function savePatch(patch){const f=path.join(root,'config.json');const old=fs.existsSync(f)?JSON.parse(fs.readFileSync(f,'utf8')):{};const temp=f+'.tmp';fs.writeFileSync(temp,JSON.stringify({...old,...patch},null,2)+'\n');fs.renameSync(temp,f);}
@@ -26,6 +28,7 @@ function validatePatch(patch){
   if(['backlightSync','voiceEnabled','codexDialEnabled','showInDock','reduceMotion','onboardingComplete'].includes(key)){if(typeof value!=='boolean')throw new Error('开关值不正确');}
   else if(key==='theme'){if(!['light','dark','system'].includes(value))throw new Error('不支持的外观');}
   else if(key==='resultDisplayMs'){if(!Number.isInteger(value)||value<1000||value>300000)throw new Error('提示时长需在 1–300 秒之间');}
+  else if(key==='brightness'){if(!Number.isInteger(value)||value<5||value>100)throw new Error('亮度需在 5–100 之间');}
   else if(key==='stateAnimations'){
    if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('灯效映射格式不正确');
    for(const [state,id] of Object.entries(value)){if(!['busy','done','error','waiting'].includes(state))throw new Error('不支持的状态');require('./animations.cjs').get(id);}

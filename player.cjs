@@ -32,6 +32,12 @@ const {AgentRegistry}=require('./agent-registry.cjs');
 const agentRegistry=new AgentRegistry();
 agentRegistry.setDoneRetentionMs(resultDisplayMs);
 let agentPruneTimer=null;
+let brightness=initial.brightness??100;
+function scaleBrightness(rgbList,percent){
+  if(percent>=100)return rgbList;
+  const f=Math.max(0.05,Math.min(1.0,percent/100));
+  return rgbList.map(([r,g,b])=>[Math.round(r*f),Math.round(g*f),Math.round(b*f)]);
+}
 function mergeStates(codexState,agentState){
   if(codexState==='waiting'||agentState==='waiting')return 'waiting';
   if(codexState==='busy'||agentState==='busy')return 'busy';
@@ -92,12 +98,15 @@ function tick(){
       lastDotCheckAt=begin;
       const signature=JSON.stringify(dot);
       if(!smoothBacklight||signature!==lastDotSignature||begin-lastDotAt>=2500){
-        keyboard.frame(dot);frames++;lastDotAt=begin;lastDotSignature=signature;lastDisplayedDot=dot;
+        keyboard.frame(scaleBrightness(dot,brightness));frames++;lastDotAt=begin;lastDotSignature=signature;lastDisplayedDot=dot;
       }
     }
     if(initial.backlightSync&&!backlightFailed){
       // Symbol brightness follows the frame actually sent to the display.
-      try{keyboard.backlight(backlight.frame(state,elapsed,syncSymbol&&lastDisplayedDot?lastDisplayedDot:dot,{...options,hardwareWaitingAmber:state==='waiting'&&animationId==='waiting'}));backlightFrames++;}
+      try{
+        const rawKeys=backlight.frame(state,elapsed,syncSymbol&&lastDisplayedDot?lastDisplayedDot:dot,{...options,hardwareWaitingAmber:state==='waiting'&&animationId==='waiting'});
+        keyboard.backlight(scaleBrightness(rawKeys,brightness));backlightFrames++;
+      }
       catch(e){backlightError=e.message;backlightFailed=true;try{keyboard.endBacklight();}catch{}}
     }
     // Prioritize backlight at up to 25Hz; dot retains its own cadence and shared timeline.
@@ -118,12 +127,13 @@ function start(next){
     try{stop();}catch(e){lastError=e.message;}
   },resultDisplayMs);
 }
-function status(){return {appId:'yogo75-codex-status',version:require('./package.json').version,instance:__dirname,animationId,voice:{enabled:initial.voiceEnabled,...voice.snapshot(),demo:state==='voice'&&mode==='manual'},codexDial:codexDial?.snapshot()??{enabled:false},backlightSync:initial.backlightSync,backlightError,animationErrors:animations.errors,state,frames,backlightFrames,error:lastError,mode,follow,agents:agentRegistry.resolveGlobalState(),hookLastEvent:attention.lastEvent,releasedFor,resultDisplayMs,connection:keyboard?(keyboard.size===32?'2.4G 接收器':'USB 有线'):null,stats:keyboard?.stats??null};}
+function status(){return {appId:'yogo75-codex-status',version:require('./package.json').version,instance:__dirname,animationId,voice:{enabled:initial.voiceEnabled,...voice.snapshot(),demo:state==='voice'&&mode==='manual'},codexDial:codexDial?.snapshot()??{enabled:false},backlightSync:initial.backlightSync,backlightError,animationErrors:animations.errors,state,frames,backlightFrames,error:lastError,mode,follow,agents:agentRegistry.resolveGlobalState(),brightness,hookLastEvent:attention.lastEvent,releasedFor,resultDisplayMs,connection:keyboard?(keyboard.size===32?'2.4G 接收器':'USB 有线'):null,stats:keyboard?.stats??null};}
 function updateSettings(patch){
  const valid=settings.validatePatch(patch);
  if(valid.stateAnimations)valid.stateAnimations={...initial.stateAnimations,...valid.stateAnimations};
  settings.savePatch(valid);Object.assign(initial,valid);resultDisplayMs=initial.resultDisplayMs;
  agentRegistry.setDoneRetentionMs(resultDisplayMs);
+ if('brightness' in valid){brightness=initial.brightness;lastDotSignature=null;}
  if('codexDialEnabled' in valid){codexDial?.close();codexDial=null;if(initial.codexDialEnabled){codexDial=new CodexDial(settings.local);codexDial.start();}}
  if('voiceEnabled' in valid){clearInterval(voicePoll);voicePoll=null;audioObserver?.close();audioObserver=null;voice.fail('');lastVoiceActive=false;if(initial.voiceEnabled){audioObserver=new AudioObserver(voice,settings.local,refreshVoice);audioObserver.start();voicePoll=setInterval(refreshVoice,250);}}
  if('backlightSync' in valid||'stateAnimations' in valid||'resultDisplayMs' in valid){const previous=state;stop();if(mode==='manual'&&previous!=='stopped')start(previous);}
@@ -140,7 +150,7 @@ const server=http.createServer((req,res)=>{
   if(req.method==='GET'&&req.url==='/app-info'){
     let connected=[],deviceError='';try{connected=devices().map(d=>({transport:d.productId===0x119b?'USB 有线':'2.4G 接收器',name:d.product||'YOGO 75 PRO'}));}catch(e){deviceError=e.message;}
     const config=settings.read();
-    return reply(res,200,{platform:process.platform,devices:connected,deviceError,settings:{scope:config.scope,sessionId:config.sessionId,backlightSync:initial.backlightSync,voiceEnabled:initial.voiceEnabled,codexDialEnabled:initial.codexDialEnabled,showInDock:initial.showInDock,resultDisplayMs,theme:initial.theme,reduceMotion:initial.reduceMotion,onboardingComplete:initial.onboardingComplete,stateAnimations:initial.stateAnimations},sessionsAvailable:fs.existsSync(initial.sessionsRoot)});
+    return reply(res,200,{platform:process.platform,devices:connected,deviceError,settings:{scope:config.scope,sessionId:config.sessionId,backlightSync:initial.backlightSync,voiceEnabled:initial.voiceEnabled,codexDialEnabled:initial.codexDialEnabled,showInDock:initial.showInDock,resultDisplayMs,brightness,theme:initial.theme,reduceMotion:initial.reduceMotion,onboardingComplete:initial.onboardingComplete,stateAnimations:initial.stateAnimations},sessionsAvailable:fs.existsSync(initial.sessionsRoot)});
   }
   if(req.method==='GET'&&req.url==='/sessions'){try{const index=watcher?.watchers?watcher:new GlobalWatcher(settings.read(),()=>{});index.discover();const list=[];for(const [file,w] of index.watchers){const id=w.config.sessionId;selectableSessions.set(id,file);list.push({id,modified:fs.statSync(file).mtimeMs});}return reply(res,200,list.sort((a,b)=>b.modified-a.modified).slice(0,60));}catch(e){return reply(res,400,{error:e.message});}}
   if(req.method==='GET'&&req.url.startsWith('/catalog-preview?')){try{const query=new URL(req.url,base).searchParams,id=query.get('id'),ms=Number(query.get('ms'));if(!Number.isFinite(ms)||ms<0||ms>86400000)throw Error('Invalid preview time');const dot=frame(id,ms,{demo:true});return reply(res,200,{pixels:dot,keys:backlight.frame(id,ms,dot,{demo:true}),id});}catch(e){return reply(res,400,{error:e.message});}}

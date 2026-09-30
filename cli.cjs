@@ -9,7 +9,17 @@ const {ensure,running}=require('./launcher.cjs');
   console.log(JSON.stringify({platform:process.platform,arch:process.arch,node:process.version,hid:require('node-hid/package.json').version,devices,deviceError,sessionsAvailable:fs.existsSync(settings.sessionsRoot),animations:require('./animations.cjs').list(),animationErrors:require('./animations.cjs').errors},null,2));return;
  }
  if(cmd==='list'){console.log(JSON.stringify(require('./animations.cjs').list(),null,2));return;}
- if(!['play','auto','stop','quit','status','report'].includes(cmd))throw new Error('Usage: cli.cjs list | play <id> | auto | stop | quit | status | report | doctor');
+ if(!['play','auto','stop','quit','status','report','brightness'].includes(cmd))throw new Error('Usage: cli.cjs list | play <id> | auto | stop | quit | status | report | brightness <5-100> | doctor');
+ if(cmd==='brightness'){
+  const val=Number(arg);
+  if(!Number.isInteger(val)||val<5||val>100)throw new Error('Usage: cli.cjs brightness <5-100>');
+  const info=await ensure();if(!info)throw new Error('播放器未运行');
+  const html=await(await fetch(info.url)).text(),token=html.match(/const token='([a-f0-9]+)'/)?.[1];if(!token)throw new Error('Invalid player response');
+  const response=await fetch(info.url+'/settings',{method:'POST',headers:{'X-Player-Token':token,'Content-Type':'application/json'},body:JSON.stringify({brightness:val})});
+  const s=await response.json();if(!response.ok||s.error)throw new Error(s.error||'Request failed');
+  console.log(JSON.stringify({ok:true,brightness:val}));
+  return;
+ }
  if(cmd==='report'){
   const args=process.argv.slice(3);
   const params={};
