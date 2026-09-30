@@ -25,7 +25,7 @@ export default function (pi: ExtensionAPI) {
   // 1. Locate YOGO Studio runtime.json
   function getRuntimeInfo(): RuntimeInfo | null {
     const now = Date.now();
-    if (cachedRuntime && now - lastCheckTime < 5000) {
+    if (cachedRuntime && now - lastCheckTime < 3000) {
       return cachedRuntime;
     }
     lastCheckTime = now;
@@ -76,12 +76,12 @@ export default function (pi: ExtensionAPI) {
   }
 
   // 3. Report state to YOGO Studio with 403 single retry
-  async function report(sessionId: string, state: AgentState, turnId?: string, isRetry = false) {
+  async function report(sessionId: string, state: AgentState, turnId?: string, isRetry = false): Promise<boolean> {
     const runtime = getRuntimeInfo();
-    if (!runtime) return;
+    if (!runtime) return false;
 
     const token = await getToken(runtime.url, isRetry);
-    if (!token) return;
+    if (!token) return false;
 
     try {
       const signal = AbortSignal.timeout(1200);
@@ -104,12 +104,12 @@ export default function (pi: ExtensionAPI) {
       });
 
       if (!res.ok && res.status === 403 && !isRetry) {
-        // Token might have expired due to daemon restart; invalidate and retry once immediately
         cachedToken = null;
-        await report(sessionId, state, turnId, true);
+        return await report(sessionId, state, turnId, true);
       }
+      return res.ok;
     } catch {
-      // Server unreachable, fail silently
+      return false;
     }
   }
 
@@ -139,7 +139,51 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  // 5. Hook into Pi lifecycle events
+  // 5. User Slash Command: /yogo
+  if (typeof pi.registerCommand === "function") {
+    pi.registerCommand("yogo", {
+      description: "检查 YOGO 75 键盘状态灯同步状态 (/yogo status | /yogo test)",
+      handler: async (args, ctx) => {
+        const sub = (args || "").trim();
+        const runtime = getRuntimeInfo();
+
+        if (!runtime) {
+          ctx.ui.notify("❌ 未检测到正在运行的 YOGO Studio，请先打开应用", "warning");
+          return;
+        }
+
+        if (sub === "test") {
+          ctx.ui.notify("💡 正在执行 YOGO 键盘灯效测试...", "info");
+          await report("test-session", "waiting");
+          await new Promise((r) => setTimeout(r, 2000));
+          await report("test-session", "done");
+          await new Promise((r) => setTimeout(r, 2000));
+          await report("test-session", "stopped");
+          ctx.ui.notify("✅ YOGO 键盘灯效测试完成", "info");
+          return;
+        }
+
+        try {
+          const res = await fetch(`${runtime.url}/status`, { signal: AbortSignal.timeout(1500) });
+          const data = await res.json();
+          const conn = data.connection || "未连接";
+          const state = data.state || "stopped";
+          ctx.ui.notify(`⌨️ YOGO Studio: ${runtime.url} | 键盘: ${conn} | 当前状态: ${state}`, "info");
+        } catch (e: any) {
+          ctx.ui.notify(`⚠️ YOGO Studio 连接异常: ${e.message}`, "error");
+        }
+      },
+    });
+  }
+
+  // 6. Hook into Pi lifecycle events
+  pi.on("session_start", async (_event, ctx) => {
+    const runtime = getRuntimeInfo();
+    if (runtime) {
+      ctx.ui.notify(`⌨️ YOGO 键盘状态同步已连接 (${runtime.url})`, "info");
+    }
+  });
+
   pi.on("agent_start", (_event, ctx) => {
     isAgentRunning = true;
     hasActivePrompt = false;
@@ -179,6 +223,13 @@ export default function (pi: ExtensionAPI) {
     hasActivePrompt = false;
     stopHeartbeat();
     report(getSessionId(ctx), "done", String(event.turnIndex));
+  });
+
+  pi.on("agent_settled", (_event, ctx) => {
+    isAgentRunning = false;
+    hasActivePrompt = false;
+    stopHeartbeat();
+    report(getSessionId(ctx), "done");
   });
 
   pi.on("agent_end", (_event, ctx) => {
