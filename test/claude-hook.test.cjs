@@ -58,14 +58,13 @@ test('Claude Hook: executes with stdin and CLI arguments against mock server', a
 
   function runScript(args, stdinInput) {
     return new Promise((resolve, reject) => {
+      const stdio = stdinInput ? ['pipe', 'ignore', 'ignore'] : ['ignore', 'ignore', 'ignore'];
       const child = spawn(process.execPath, [scriptPath, ...args], {
         env: { ...process.env, YOGO_DATA_DIR: dir },
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio
       });
       if (stdinInput) {
         child.stdin.end(stdinInput);
-      } else {
-        child.stdin.end();
       }
       child.on('error', reject);
       child.on('exit', code => resolve(code));

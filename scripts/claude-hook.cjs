@@ -113,7 +113,7 @@ async function main() {
       await report(explicitSession, explicitState);
     } catch {}
     clearTimeout(deadline);
-    exitOk();
+    process.exitCode = 0;
     return;
   }
 
@@ -122,26 +122,29 @@ async function main() {
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', chunk => {
     input += chunk;
-    if (input.length > 512 * 1024) process.stdin.destroy();
+    if (input.length > 512 * 1024) process.exit(0);
   });
 
-  process.stdin.on('end', async () => {
-    try {
+  process.stdin.on('end', () => {
+    Promise.resolve().then(async () => {
       if (input.trim()) {
         const payload = JSON.parse(input);
         const eventName = payload.hook_event_name || payload.type || payload.event;
         const targetState = mapEventToState(eventName);
-        const sessionId = payload.session_id || payload.sessionId || `claude-${process.ppid}`;
+        const sessionId = payload.session_id || payload.sessionId || `claude-${process.ppid || 'agent'}`;
         if (targetState) {
           await report(sessionId, targetState);
         }
       }
-    } catch {}
-    clearTimeout(deadline);
-    exitOk();
+    }).catch(() => {}).finally(() => {
+      clearTimeout(deadline);
+      process.exitCode = 0;
+    });
   });
 
-  process.stdin.on('error', exitOk);
+  process.stdin.on('error', () => {
+    process.exitCode = 0;
+  });
 }
 
 if (require.main === module) {
