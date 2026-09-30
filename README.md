@@ -4,7 +4,7 @@
 
 ## 下载与使用
 
-从 [Releases](https://github.com/hyao178777-hash/yogo-studio/releases) 下载：
+从 [Releases](https://github.com/Lanturewen/yogo-studio/releases) 下载：
 
 | 系统 | 安装包 |
 | --- | --- |
