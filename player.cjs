@@ -28,10 +28,28 @@ let mode='auto',watcher=null,follow=null;
 const selectableSessions=new Map();
 const {Attention}=require('./attention.cjs');
 const attention=new Attention();
+const {AgentRegistry}=require('./agent-registry.cjs');
+const agentRegistry=new AgentRegistry();
+agentRegistry.setDoneRetentionMs(resultDisplayMs);
+let agentPruneTimer=null;
+function mergeStates(codexState,agentState){
+  if(codexState==='waiting'||agentState==='waiting')return 'waiting';
+  if(codexState==='busy'||agentState==='busy')return 'busy';
+  if(codexState==='error'||agentState==='error')return 'error';
+  if(codexState==='done'||agentState==='done')return 'done';
+  return 'stopped';
+}
 function refreshFollow(){
   const base=watcher?.snapshot()||{state:'stopped'};
   const entries=watcher?.states?[...watcher.states.values()]:[base];
-  follow=attention.overlay(base,entries,base.scope==='当前任务'?base.sessionId:null);
+  const codexFollow=attention.overlay(base,entries,base.scope==='当前任务'?base.sessionId:null);
+  const agentResolved=agentRegistry.resolveGlobalState();
+  const combinedState=mergeStates(codexFollow?.state||'stopped',agentResolved.globalState);
+  follow={
+    ...codexFollow,
+    state:combinedState,
+    agentResolved
+  };
   applyFollow();
 }
 function applyFollow(){
@@ -100,11 +118,12 @@ function start(next){
     try{stop();}catch(e){lastError=e.message;}
   },resultDisplayMs);
 }
-function status(){return {appId:'yogo75-codex-status',version:require('./package.json').version,instance:__dirname,animationId,voice:{enabled:initial.voiceEnabled,...voice.snapshot(),demo:state==='voice'&&mode==='manual'},codexDial:codexDial?.snapshot()??{enabled:false},backlightSync:initial.backlightSync,backlightError,animationErrors:animations.errors,state,frames,backlightFrames,error:lastError,mode,follow,hookLastEvent:attention.lastEvent,releasedFor,resultDisplayMs,connection:keyboard?(keyboard.size===32?'2.4G 接收器':'USB 有线'):null,stats:keyboard?.stats??null};}
+function status(){return {appId:'yogo75-codex-status',version:require('./package.json').version,instance:__dirname,animationId,voice:{enabled:initial.voiceEnabled,...voice.snapshot(),demo:state==='voice'&&mode==='manual'},codexDial:codexDial?.snapshot()??{enabled:false},backlightSync:initial.backlightSync,backlightError,animationErrors:animations.errors,state,frames,backlightFrames,error:lastError,mode,follow,agents:agentRegistry.resolveGlobalState(),hookLastEvent:attention.lastEvent,releasedFor,resultDisplayMs,connection:keyboard?(keyboard.size===32?'2.4G 接收器':'USB 有线'):null,stats:keyboard?.stats??null};}
 function updateSettings(patch){
  const valid=settings.validatePatch(patch);
  if(valid.stateAnimations)valid.stateAnimations={...initial.stateAnimations,...valid.stateAnimations};
  settings.savePatch(valid);Object.assign(initial,valid);resultDisplayMs=initial.resultDisplayMs;
+ agentRegistry.setDoneRetentionMs(resultDisplayMs);
  if('codexDialEnabled' in valid){codexDial?.close();codexDial=null;if(initial.codexDialEnabled){codexDial=new CodexDial(settings.local);codexDial.start();}}
  if('voiceEnabled' in valid){clearInterval(voicePoll);voicePoll=null;audioObserver?.close();audioObserver=null;voice.fail('');lastVoiceActive=false;if(initial.voiceEnabled){audioObserver=new AudioObserver(voice,settings.local,refreshVoice);audioObserver.start();voicePoll=setInterval(refreshVoice,250);}}
  if('backlightSync' in valid||'stateAnimations' in valid||'resultDisplayMs' in valid){const previous=state;stop();if(mode==='manual'&&previous!=='stopped')start(previous);}
@@ -128,11 +147,16 @@ const server=http.createServer((req,res)=>{
   if(req.method==='GET'&&req.url==='/animations')return reply(res,200,animations.list());
   if(req.method==='GET'&&req.url==='/preview')return reply(res,200,state==='stopped'?Array.from({length:36},()=>[0,0,0]):displayFrame(Date.now()-started));
   if(req.method==='GET'&&req.url==='/status')return reply(res,200,status());
-  if(req.method==='POST'&&['/state','/auto','/scope','/stop','/shutdown','/attention','/voice','/settings','/import-animation'].includes(req.url)){
+  if(req.method==='POST'&&['/state','/auto','/scope','/stop','/shutdown','/attention','/voice','/settings','/import-animation','/agent-status'].includes(req.url)){
     if(req.headers['x-player-token']!==token||(req.headers.origin&&req.headers.origin!==base))return reply(res,403,{error:'Request rejected'});
     let body='';req.on('data',c=>{body+=c;if(body.length>(req.url==='/import-animation'?2*1024*1024:8192))req.destroy();});
     req.on('end',()=>{try{
-      if(req.url==='/settings')updateSettings(JSON.parse(body));
+      if(req.url==='/agent-status'){
+        const outcome=agentRegistry.update(JSON.parse(body));
+        refreshFollow();
+        return reply(res,200,{ok:true,...outcome});
+      }
+      else if(req.url==='/settings')updateSettings(JSON.parse(body));
       else if(req.url==='/import-animation'){
         const data=animations.validate(JSON.parse(body));if(animations.list().some(a=>a.id===data.id))throw new Error('已有相同 ID 的动画，请更改文件中的 ID 后重试');
         const dir=path.join(settings.local,'animations');fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,data.id+'.json'),JSON.stringify(data),{flag:'wx'});animations.register(data);
@@ -149,13 +173,14 @@ const server=http.createServer((req,res)=>{
   }
   reply(res,404,{error:'Not found'});
 });
-function shutdown(){if(shuttingDown)return;shuttingDown=true;watcher?.close();clearInterval(voicePoll);audioObserver?.close();codexDial?.close();try{stop();}catch(e){console.error(e.message);}server.close(()=>process.exit());setTimeout(()=>process.exit(),1500).unref();}
+function shutdown(){if(shuttingDown)return;shuttingDown=true;watcher?.close();clearInterval(voicePoll);clearInterval(agentPruneTimer);audioObserver?.close();codexDial?.close();try{stop();}catch(e){console.error(e.message);}server.close(()=>process.exit());setTimeout(()=>process.exit(),1500).unref();}
 process.on('SIGINT',shutdown);process.on('SIGTERM',shutdown);
 process.on('uncaughtException',e=>{console.error(e);shutdown();});
 server.on('error',e=>{if(e.code==='EADDRINUSE')server.listen(0,'127.0.0.1');else shutdown();});
 server.listen(initial.port,'127.0.0.1',()=>{
   const port=server.address().port;fs.writeFileSync(path.join(settings.local,'runtime.json'),JSON.stringify({port,pid:process.pid,url:`http://127.0.0.1:${port}`}));console.log(`PLAYER http://127.0.0.1:${port}`);
   setupWatch();
+  agentPruneTimer=setInterval(()=>{if(agentRegistry.sessions.size>0&&mode==='auto')refreshFollow();},1000).unref();
   if(process.env.YOGO_PARENT_PID){const parent=Number(process.env.YOGO_PARENT_PID);setInterval(()=>{try{process.kill(parent,0);}catch{shutdown();}},2000).unref();}
   setInterval(()=>{if(mode==='auto'&&!keyboard&&(voice.snapshot().active||['busy','waiting'].includes(follow?.state))){try{if(devices().length)applyFollow();}catch{}}},5000).unref();
   if(initial.voiceEnabled){audioObserver=new AudioObserver(voice,settings.local,refreshVoice);audioObserver.start();voicePoll=setInterval(refreshVoice,250);}

@@ -1,3 +1,11 @@
+# 0.9.0-beta.19
+
+- 新增多 Agent 灯光状态中枢与仲裁机制（Pi Agent、Claude CLI 与 Codex 会话共存），实现严格的全局优先级仲裁：`waiting > busy > error > done > stopped`。
+- 引入会话租约（TTL）与长任务保活支持，防止终端异常退出导致灯光死锁或长时间命令中途熄灭。
+- 开放本地 `/agent-status` 路由，并为 `cli.cjs` 增加 `report` 统一上报子命令。
+- 提供 Pi Agent 原生扩展（`yogo-status.ts`），支持生命周期自动映射、长任务心跳保活及服务重启 403 快速自愈重试。
+- 提供 Claude CLI 适配桥接（`claude-hook.cjs`），无缝对接 `UserPromptSubmit`、`PermissionRequest`、`PostToolUse`、`Stop` 与 `SessionEnd` hooks。
+
 # 0.9.0-beta.18
 
 - macOS 桌面版新增“在 Dock 显示图标”开关，位于“偏好设置 → 运行方式”。关闭后可继续从菜单栏图标打开窗口，选择会在重启后保留。
